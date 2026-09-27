@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#0b5fa5">
+<title>แจ้งน้ำท่วม ประจวบคีรีขันธ์</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:"Sarabun",-apple-system,"Segoe UI",sans-serif;background:#f2f5f8;color:#16232e;font-size:17px}
+header{background:#0b5fa5;color:#fff;padding:14px 16px;position:sticky;top:0;z-index:999}
+header h1{margin:0;font-size:19px}header p{margin:3px 0 0;font-size:13px;opacity:.9}
+.wrap{padding:14px;max-width:640px;margin:auto}
+.card{background:#fff;border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 2px 8px rgba(0,0,0,.07)}
+.card h2{font-size:16px;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+.num{background:#0b5fa5;color:#fff;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:14px}
+#map{height:230px;border-radius:12px;margin-bottom:10px}
+.gps{font-size:13px;background:#eef4fa;padding:10px;border-radius:10px;line-height:1.7}
+.gps b{color:#0b5fa5}
+.warn{background:#fff3cd;color:#8a6100}
+.lv{display:grid;gap:10px}
+.lv button{border:3px solid transparent;border-radius:12px;padding:14px;text-align:left;font-size:17px;font-weight:700;cursor:pointer;color:#fff;width:100%}
+.lv small{display:block;font-weight:400;font-size:13px;opacity:.95;margin-top:3px}
+.l1{background:#f0b429}.l2{background:#e8710a}.l3{background:#d32029}
+.lv button[aria-pressed="true"]{border-color:#16232e;transform:scale(.98)}
+label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
+input,select,textarea{width:100%;padding:12px;border:1.5px solid #cfd8e0;border-radius:10px;font-size:16px;font-family:inherit}
+.cnt{display:flex;align-items:center;gap:12px}
+.cnt button{width:46px;height:46px;font-size:24px;border:1.5px solid #cfd8e0;background:#fff;border-radius:10px;cursor:pointer}
+.cnt input{text-align:center;font-size:20px;font-weight:700}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips label{display:inline-flex;align-items:center;gap:6px;background:#eef2f6;padding:9px 13px;border-radius:20px;margin:0;font-weight:400;font-size:14px;cursor:pointer}
+.chips input{width:auto}
+.alert{background:#fdecea;border-left:4px solid #d32029;padding:11px;border-radius:8px;font-size:14px;margin-top:10px}
+.submit{width:100%;padding:17px;background:#0b5fa5;color:#fff;border:0;border-radius:12px;font-size:19px;font-weight:700;cursor:pointer}
+.submit:disabled{background:#98a8b5}
+.sos{width:100%;padding:14px;background:#d32029;color:#fff;border:0;border-radius:12px;font-size:17px;font-weight:700;margin-bottom:14px}
+.toast{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;place-items:center;padding:24px;z-index:9999}
+.toast.on{display:grid}
+.toast div{background:#fff;padding:26px;border-radius:16px;text-align:center;max-width:340px}
+.toast h3{margin:0 0 8px;color:#0b7a3f}
+.q{font-size:13px;color:#8a6100;background:#fff3cd;padding:9px;border-radius:8px;display:none;margin-bottom:10px}
+</style>
+</head>
+<body>
+<header>
+  <h1>แจ้งเหตุน้ำท่วม จ.ประจวบคีรีขันธ์</h1>
+  <p>กรอกข้อมูลเพื่อให้ทีมช่วยเหลือเข้าถึงท่านได้เร็วที่สุด</p>
+</header>
+
+<div class="wrap">
+  <div class="q" id="queueBox"></div>
+  <button class="sos" id="sosBtn">SOS ขอความช่วยเหลือด่วน (กดค้าง 3 วินาที)</button>
+
+  <form id="f">
+    <div class="card">
+      <h2><span class="num">1</span> ตำแหน่งที่เกิดเหตุ</h2>
+      <div id="map"></div>
+      <div class="gps" id="gpsInfo">กำลังค้นหาตำแหน่ง GPS…</div>
+      <p style="font-size:13px;color:#5b6a77;margin:8px 0 0">ลากหมุดสีแดงบนแผนที่เพื่อปรับตำแหน่งให้ตรงจุดได้</p>
+    </div>
+
+    <div class="card">
+      <h2><span class="num">2</span> ระดับความรุนแรง</h2>
+      <div class="lv">
+        <button type="button" class="l1" data-lv="minor" aria-pressed="false">น้ำท่วมเล็กน้อย
+          <small>น้ำขังรอระบาย ต่ำกว่าเข่า ยังขนของขึ้นที่สูงได้</small></button>
+        <button type="button" class="l2" data-lv="moderate" aria-pressed="false">น้ำท่วมปานกลาง
+          <small>ระดับเข่าถึงเอว สัญจรลำบาก</small></button>
+        <button type="button" class="l3" data-lv="severe" aria-pressed="false">น้ำท่วมมาก
+          <small>สูงเกินเอว บ้านเสียหาย ต้องการอพยพด่วน</small></button>
+      </div>
+      <label>ระดับน้ำโดยประมาณ (ซม.) — ถ้าทราบ</label>
+      <input type="number" id="depth" min="0" max="500" placeholder="เช่น 60">
+    </div>
+
+    <div class="card">
+      <h2><span class="num">3</span> ผู้ป่วยและกลุ่มเปราะบาง</h2>
+      <label>ผู้ป่วยติดเตียง (เคลื่อนย้ายเองไม่ได้)</label>
+      <div class="cnt"><button type="button" data-m="bed" data-d="-1">−</button>
+        <input type="number" id="bed" value="0" min="0" readonly>
+        <button type="button" data-m="bed" data-d="1">+</button></div>
+
+      <label>ผู้ป่วยติดบ้าน (ช่วยเหลือตัวเองได้บ้าง)</label>
+      <div class="cnt"><button type="button" data-m="home" data-d="-1">−</button>
+        <input type="number" id="home" value="0" min="0" readonly>
+        <button type="button" data-m="home" data-d="1">+</button></div>
+
+      <label>ผู้สูงอายุ 70 ปีขึ้นไป</label>
+      <div class="cnt"><button type="button" data-m="eld" data-d="-1">−</button>
+        <input type="number" id="eld" value="0" min="0" readonly>
+        <button type="button" data-m="eld" data-d="1">+</button></div>
+
+      <label>เด็กเล็กต่ำกว่า 5 ขวบ</label>
+      <div class="cnt"><button type="button" data-m="kid" data-d="-1">−</button>
+        <input type="number" id="kid" value="0" min="0" readonly>
+        <button type="button" data-m="kid" data-d="1">+</button></div>
+
+      <label>ความต้องการพิเศษ (เลือกได้หลายข้อ)</label>
+      <div class="chips" id="needs">
+        <label><input type="checkbox" value="ออกซิเจน">ต้องใช้ออกซิเจน</label>
+        <label><input type="checkbox" value="ไฟฟ้าเครื่องมือแพทย์">เครื่องมือแพทย์ต้องใช้ไฟ</label>
+        <label><input type="checkbox" value="สายให้อาหาร">ให้อาหารทางสาย</label>
+        <label><input type="checkbox" value="ฟอกไต">ฟอกไตตามนัด</label>
+        <label><input type="checkbox" value="รถเข็น">ผู้พิการใช้รถเข็น</label>
+        <label><input type="checkbox" value="ยาใกล้หมด">ยาประจำตัวใกล้หมด</label>
+      </div>
+      <div class="alert" id="bedAlert" style="display:none">
+        ระบบจะจัดให้เป็น <b>เคสเร่งด่วนสูงสุด</b> และแจ้งทีมกู้ภัยทันที กรุณาระบุเบอร์โทรที่ติดต่อได้จริง
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="num">4</span> ข้อมูลติดต่อ</h2>
+      <label>ชื่อผู้แจ้ง *</label><input id="name" required placeholder="ชื่อ-นามสกุล">
+      <label>เบอร์โทรศัพท์ *</label><input id="phone" type="tel" required pattern="[0-9]{9,10}" placeholder="0812345678">
+      <label>จุดสังเกตบริเวณบ้าน</label>
+      <textarea id="landmark" rows="2" placeholder="เช่น บ้านสีฟ้าหลังวัดเขาโบสถ์ ติดร้านขายของชำ"></textarea>
+      <label>อำเภอ *</label>
+      <select id="amphoe" required>
+        <option value="">— เลือกอำเภอ —</option>
+        <option>เมืองประจวบคีรีขันธ์</option><option>หัวหิน</option><option>ปราณบุรี</option>
+        <option>สามร้อยยอด</option><option>กุยบุรี</option><option>ทับสะแก</option>
+        <option>บางสะพาน</option><option>บางสะพานน้อย</option>
+      </select>
+      <label>ผู้แจ้งคือ</label>
+      <select id="role"><option>เจ้าของบ้าน</option><option>เพื่อนบ้าน/ญาติ</option>
+        <option>อสม.</option><option>เจ้าหน้าที่ท้องถิ่น</option></select>
+    </div>
+
+    <button class="submit" id="btn" type="submit">ส่งข้อมูลแจ้งเหตุ</button>
+    <p style="text-align:center;font-size:13px;color:#5b6a77">ข้อมูลของท่านถูกจัดเก็บตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล</p>
+  </form>
+</div>
+
+<div class="toast" id="toast"><div>
+  <h3>ส่งข้อมูลสำเร็จ</h3>
+  <p style="font-size:15px">เลขอ้างอิงของท่านคือ<br><b id="code" style="font-size:20px"></b></p>
+  <p style="font-size:14px;color:#5b6a77">เจ้าหน้าที่จะติดต่อกลับตามลำดับความเร่งด่วน</p>
+  <button class="submit" onclick="location.reload()">แจ้งเหตุจุดอื่น</button>
+</div></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+/* ===== ตั้งค่า: วาง URL ของ Apps Script Web App ที่นี่ ===== */
+const API = 'https://script.google.com/macros/s/AKfycbyf8QBSKC5t1PQDUTbQHTiFlVNw5jGCJV1g30bpMKpH4CwG_pX1fIIqJiiYrVRF0HQ/exec';
+
+let lat=null, lng=null, acc=null, level=null, devTime=null;
+const map = L.map('map').setView([11.8127, 99.7970], 13); // ศาลากลาง จ.ประจวบฯ
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {maxZoom:19, attribution:'© OpenStreetMap'}).addTo(map);
+const marker = L.marker([11.8127,99.7970], {draggable:true}).addTo(map);
+
+function setPos(la, ln, ac, moveMap) {
+  lat=+la.toFixed(7); lng=+ln.toFixed(7); acc=ac?Math.round(ac):null;
+  devTime = new Date().toISOString();
+  marker.setLatLng([lat,lng]);
+  if (moveMap) map.setView([lat,lng], 17);
+  const t = new Date().toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'medium'});
+  const box = document.getElementById('gpsInfo');
+  box.className = 'gps' + ((acc && acc > 50) ? ' warn' : '');
+  box.innerHTML = `<b>ละติจูด:</b> ${lat} &nbsp; <b>ลองจิจูด:</b> ${lng}<br>
+    <b>เวลาที่ระบุพิกัด:</b> ${t}<br>
+    <b>ความแม่นยำ:</b> ±${acc||'-'} เมตร ${(acc&&acc>50)?'— สัญญาณอ่อน แนะนำให้ออกที่โล่งแล้วกดรีเฟรช':''}`;
+}
+marker.on('dragend', e => { const p = e.target.getLatLng(); setPos(p.lat, p.lng, null, false); });
+
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(
+    p => setPos(p.coords.latitude, p.coords.longitude, p.coords.accuracy, true),
+    () => document.getElementById('gpsInfo').innerHTML =
+      '<b style="color:#d32029">ไม่สามารถระบุตำแหน่งได้</b><br>กรุณาอนุญาตการเข้าถึงตำแหน่ง หรือลากหมุดบนแผนที่เอง',
+    {enableHighAccuracy:true, timeout:15000, maximumAge:0});
+}
+
+document.querySelectorAll('.lv button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.lv button').forEach(x => x.setAttribute('aria-pressed','false'));
+  b.setAttribute('aria-pressed','true'); level = b.dataset.lv;
+});
+
+document.querySelectorAll('.cnt button').forEach(b => b.onclick = () => {
+  const el = document.getElementById(b.dataset.m);
+  el.value = Math.max(0, +el.value + +b.dataset.d);
+  document.getElementById('bedAlert').style.display =
+    (+document.getElementById('bed').value > 0) ? 'block' : 'none';
+});
+
+function score(){
+  const L={minor:1,moderate:2,severe:3}[level]||0;
+  const n=[...document.querySelectorAll('#needs input:checked')].length;
+  return Math.min(100, L*20 + (+bed.value)*15 + (+home.value)*8 + n*10 +
+                       (+eld.value + (+kid.value))*3);
+}
+
+function payload(sos){
+  return {
+    device_time: devTime || new Date().toISOString(),
+    latitude: lat, longitude: lng, gps_accuracy: acc,
+    flood_level: sos ? 'severe' : level,
+    water_depth_cm: +depth.value || 0,
+    bedridden_count: +bed.value, homebound_count: +home.value,
+    elderly_count: +eld.value, child_count: +kid.value,
+    special_needs: [...document.querySelectorAll('#needs input:checked')].map(c=>c.value),
+    contact_name: name.value || (sos?'SOS ไม่ระบุชื่อ':''),
+    contact_phone: phone.value, landmark: landmark.value,
+    amphoe: amphoe.value, role: role.value,
+    priority_score: sos ? 100 : score()
+  };
+}
+
+async function send(data){
+  const r = await fetch(API, {method:'POST', body: JSON.stringify(data)});
+  return r.json();
+}
+
+/* คิวออฟไลน์ */
+function queue(d){ const q=JSON.parse(localStorage.q||'[]'); q.push(d); localStorage.q=JSON.stringify(q); showQ(); }
+function showQ(){ const q=JSON.parse(localStorage.q||'[]'); const b=document.getElementById('queueBox');
+  b.style.display=q.length?'block':'none'; b.textContent='มีรายงานค้างส่ง '+q.length+' รายการ จะส่งอัตโนมัติเมื่อมีสัญญาณอินเทอร์เน็ต'; }
+async function flush(){ let q=JSON.parse(localStorage.q||'[]'); if(!q.length) return;
+  const rest=[]; for(const d of q){ try{ await send(d);}catch(e){ rest.push(d);} }
+  localStorage.q=JSON.stringify(rest); showQ(); }
+window.addEventListener('online', flush); showQ(); flush();
+
+document.getElementById('f').onsubmit = async ev => {
+  ev.preventDefault();
+  if (lat===null) return alert('ยังไม่ได้ตำแหน่ง กรุณาลากหมุดบนแผนที่');
+  if (!level)     return alert('กรุณาเลือกระดับความรุนแรงของน้ำท่วม');
+  btn.disabled = true; btn.textContent = 'กำลังส่งข้อมูล…';
+  const d = payload(false);
+  try {
+    const res = await send(d);
+    code.textContent = res.report_code || '-';
+    toast.classList.add('on');
+  } catch (e) {
+    queue(d);
+    alert('ไม่มีสัญญาณอินเทอร์เน็ต ระบบบันทึกไว้แล้วและจะส่งให้อัตโนมัติเมื่อเชื่อมต่อได้');
+  }
+  btn.disabled = false; btn.textContent = 'ส่งข้อมูลแจ้งเหตุ';
+};
+
+/* ปุ่ม SOS กดค้าง 3 วินาที */
+let timer;
+const sos = document.getElementById('sosBtn');
+const start = () => { sos.textContent='กำลังส่ง SOS… ปล่อยเพื่อยกเลิก';
+  timer = setTimeout(async () => {
+    const d = payload(true);
+    try { const r = await send(d); code.textContent=r.report_code||'-'; toast.classList.add('on'); }
+    catch(e){ queue(d); alert('บันทึก SOS ไว้แล้ว จะส่งทันทีที่มีสัญญาณ'); }
+    sos.textContent='SOS ขอความช่วยเหลือด่วน (กดค้าง 3 วินาที)';
+  }, 3000); };
+const stop = () => { clearTimeout(timer); sos.textContent='SOS ขอความช่วยเหลือด่วน (กดค้าง 3 วินาที)'; };
+sos.addEventListener('touchstart', start); sos.addEventListener('touchend', stop);
+sos.addEventListener('mousedown', start);  sos.addEventListener('mouseup', stop);
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>

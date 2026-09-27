@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ศูนย์ปฏิบัติการ PKN Flood Watch</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:"Sarabun",-apple-system,"Segoe UI",sans-serif;background:#eef2f6}
+header{background:#0b2d4d;color:#fff;padding:12px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
+header h1{font-size:18px;margin:0}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:12px}
+.s{background:#fff;border-radius:12px;padding:13px;border-left:5px solid #0b5fa5}
+.s b{display:block;font-size:26px}.s span{font-size:13px;color:#5b6a77}
+.red{border-color:#d32029}.red b{color:#d32029}
+.org{border-color:#e8710a}.yel{border-color:#f0b429}
+.bar{padding:0 12px 10px;display:flex;gap:8px;flex-wrap:wrap}
+.bar button{padding:9px 15px;border:1.5px solid #c3ced8;background:#fff;border-radius:20px;cursor:pointer;font-size:14px}
+.bar button.on{background:#0b2d4d;color:#fff;border-color:#0b2d4d}
+#map{height:60vh;margin:0 12px;border-radius:12px}
+table{width:calc(100% - 24px);margin:12px;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;font-size:14px}
+th,td{padding:9px 11px;text-align:left;border-bottom:1px solid #e6ecf1}
+th{background:#0b2d4d;color:#fff}
+tr.crit{background:#fdecea}
+.pin{width:26px;height:26px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 5px rgba(0,0,0,.5);display:grid;place-items:center;color:#fff;font-size:14px;font-weight:700}
+</style>
+</head>
+<body>
+<header>
+  <h1>ศูนย์ปฏิบัติการน้ำท่วม จ.ประจวบคีรีขันธ์</h1>
+  <div><span id="upd" style="font-size:13px"></span>
+  <button onclick="exportCSV()" style="margin-left:10px;padding:7px 14px;border-radius:8px;border:0;cursor:pointer">ส่งออก CSV</button></div>
+</header>
+
+<div class="stats" id="stats"></div>
+<div class="bar">
+  <button class="on" data-f="all">ทั้งหมด</button>
+  <button data-f="bed">เฉพาะจุดที่มีผู้ป่วยติดเตียง</button>
+  <button data-f="severe">ท่วมมาก</button>
+  <button data-f="pending">รอดำเนินการ</button>
+</div>
+<div id="map"></div>
+<table id="tb"><thead><tr><th>รหัส</th><th>เวลา</th><th>อำเภอ</th><th>ระดับ</th>
+<th>ติดเตียง</th><th>ติดบ้าน</th><th>คะแนน</th><th>ติดต่อ</th><th>สถานะ</th></tr></thead><tbody></tbody></table>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script>
+const API = 'https://script.google.com/macros/s/AKfycbyf8QBSKC5t1PQDUTbQHTiFlVNw5jGCJV1g30bpMKpH4CwG_pX1fIIqJiiYrVRF0HQ/exec';
+const KEY = 'Hs7zwy0871624996';
+const COLOR = {minor:'#f0b429', moderate:'#e8710a', severe:'#d32029'};
+const THAI  = {minor:'เล็กน้อย', moderate:'ปานกลาง', severe:'ท่วมมาก'};
+let all = [], filter = 'all';
+
+const map = L.map('map').setView([11.85, 99.70], 10);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+const cluster = L.markerClusterGroup();
+map.addLayer(cluster);
+
+async function load(){
+  const r = await fetch(API + '?key=' + KEY);
+  const j = await r.json();
+  all = j.data.filter(d => d.latitude);
+  render();
+  document.getElementById('upd').textContent =
+    'อัปเดตล่าสุด ' + new Date().toLocaleTimeString('th-TH');
+}
+
+function view(){
+  if (filter==='bed')     return all.filter(d=>+d.bedridden_count>0);
+  if (filter==='severe')  return all.filter(d=>d.flood_level==='severe');
+  if (filter==='pending') return all.filter(d=>d.status==='pending');
+  return all;
+}
+
+function render(){
+  const d = view();
+  cluster.clearLayers();
+  d.sort((a,b)=>b.priority_score-a.priority_score).forEach(r=>{
+    const bed = +r.bedridden_count > 0;
+    const icon = L.divIcon({html:`<div class="pin" style="background:${COLOR[r.flood_level]}">${bed?'🛏':''}</div>`,
+      className:'', iconSize:[26,26]});
+    L.marker([r.latitude, r.longitude], {icon}).bindPopup(`
+      <b>${r.report_code}</b><br>
+      ระดับ: <b style="color:${COLOR[r.flood_level]}">${THAI[r.flood_level]}</b><br>
+      ผู้ป่วยติดเตียง: <b>${r.bedridden_count}</b> / ติดบ้าน: ${r.homebound_count}<br>
+      ${r.special_needs?'ต้องการ: '+r.special_needs+'<br>':''}
+      ${r.landmark?'จุดสังเกต: '+r.landmark+'<br>':''}
+      คะแนนเร่งด่วน: <b>${r.priority_score}</b><br>
+      <a href="tel:${r.contact_phone}">โทร ${r.contact_phone}</a> |
+      <a target="_blank" href="https://www.google.com/maps/dir/?api=1&destination=${r.latitude},${r.longitude}">นำทาง</a><br>
+      <button onclick="upd('${r.report_code}','in_progress')">กำลังเข้าช่วยเหลือ</button>
+      <button onclick="upd('${r.report_code}','resolved')">เสร็จสิ้น</button>
+    `).addTo(cluster);
+  });
+
+  const sum = k => all.reduce((s,x)=>s+(+x[k]||0),0);
+  const pend = all.filter(x=>x.status==='pending');
+  document.getElementById('stats').innerHTML = `
+    <div class="s"><b>${all.length}</b><span>รายงานทั้งหมด</span></div>
+    <div class="s red"><b>${sum('bedridden_count')}</b><span>ผู้ป่วยติดเตียงรวม</span></div>
+    <div class="s org"><b>${sum('homebound_count')}</b><span>ผู้ป่วยติดบ้านรวม</span></div>
+    <div class="s red"><b>${all.filter(x=>x.flood_level==='severe').length}</b><span>จุดน้ำท่วมมาก</span></div>
+    <div class="s yel"><b>${pend.length}</b><span>รอดำเนินการ</span></div>`;
+
+  document.querySelector('#tb tbody').innerHTML = d.map(r=>`
+    <tr class="${+r.bedridden_count>0?'crit':''}">
+      <td>${r.report_code}</td>
+      <td>${new Date(r.device_time).toLocaleString('th-TH',{dateStyle:'short',timeStyle:'short'})}</td>
+      <td>${r.amphoe||'-'}</td>
+      <td style="color:${COLOR[r.flood_level]};font-weight:700">${THAI[r.flood_level]}</td>
+      <td style="text-align:center"><b>${r.bedridden_count}</b></td>
+      <td style="text-align:center">${r.homebound_count}</td>
+      <td style="text-align:center">${r.priority_score}</td>
+      <td>${r.contact_phone||''}</td>
+      <td>${r.status}</td></tr>`).join('');
+}
+
+async function upd(code, status){
+  await fetch(API, {method:'POST', body: JSON.stringify({action:'update', key:KEY, report_code:code, status})});
+  load();
+}
+
+function exportCSV(){
+  const rows = view();
+  const head = Object.keys(rows[0]).join(',');
+  const body = rows.map(r=>Object.values(r).map(v=>`"${v}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\uFEFF'+head+'\n'+body], {type:'text/csv'}));
+  a.download = 'flood_reports.csv'; a.click();
+}
+
+document.querySelectorAll('.bar button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.bar button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); filter = b.dataset.f; render();
+});
+
+load(); setInterval(load, 30000);   // รีเฟรชอัตโนมัติทุก 30 วินาที
+</script>
+</body>
+</html>
